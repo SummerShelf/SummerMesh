@@ -11,6 +11,8 @@ unsigned char lastbuttonpress=8;
 unsigned char type=0;
 bool retranslatormode = false;
 bool recievemode = true;
+bool recieving = false;
+bool recieveflag = false;
 const char* menuelements[]={"reciever mode","retranslator mode","transmit"};
 struct __attribute__((__packed__)) packagesingle{
   uint8_t kind;
@@ -23,14 +25,27 @@ struct __attribute__((__packed__)) packagesingle{
 
 void sendsingle(uint32_t targetId, const char* text);
 
+void setflag(){
+  recieveflag=true;
+}
+
 void setup() {
   Serial.begin(115200);
   u8g2.begin();
   SPI.begin(10, 6, 7, 8);
   radio.begin(868.0);
+  radio.setPacketReceivedAction(setflag);
 }
 
 void loop() {
+  if (recievemode && !recieving){
+    radio.startReceive();
+    recieving=true;
+  }
+  else if (!recievemode && recieving){
+    radio.standby();
+    recieving=false;
+  }
   readValue=analogRead(2);
   if (readValue > 0 && readValue < 250) {
     if (lastbuttonpress == 8 && page > 0 && type == 0) {
