@@ -10,7 +10,7 @@ U8G2_SH1106_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ 1, /* data=*/ 0, /*
 unsigned char page=0;
 int readValue=0;
 uint32_t retranslatedmessageids[lenretbuffer];
-int head=0;
+int headretarr=0;
 unsigned char lastbuttonpress=8;
 unsigned char type=0;
 bool retranslatormode = false;
@@ -35,8 +35,9 @@ struct __attribute__((__packed__)) packagesingle{//package for transmiting data 
   char message[]; //I don't know how long message will be
 };
 
-int sendsingle(uint32_t targetId, const char* text);
+int sendsingle(uint32_t targetid, const char* message, uint8_t sethops, uint32_t setnetwork);
 int recieve();
+void savedata(struct mainrecivepackage rpck);
 
 void setflag(){
   recieveflag=true;
@@ -71,7 +72,7 @@ void loop() {
   else if (readValue > 650 && readValue < 870) {
     lastbuttonpress = 1;
     if (page ==2 && type==0){
-      sendsingle(2, "Hello world, This is Summer. Test of new lora chip. This UTF-8 String is compacted as much as possible");
+      sendsingle(2, "Hello world, This is Summer. Test of new lora chip. This UTF-8 String is compacted as much as possible",(uint8_t)10,(uint32_t)43);//this is only for testing
     }
     if (page==0 && type==0){
       recievemode=!recievemode;
@@ -152,14 +153,20 @@ int recieve(){
   radio.readData(rawrecievedata, len);
   if (*rawrecievedata==(uint8_t)1){
     struct packagesingle* recievepackage = (struct packagesingle*)rawrecievedata;
-    rawrecievedata[len-1]='\0';
+    rawrecievedata[len-1]='\0'; //adds null terminator
     if (retranslatormode && recievepackage->hops > 0){
       if (sendsingle(recievepackage->recieveid,recievepackage->message,(recievepackage->hops)-1, recievepackage->networkid)==0){
-        head++;
-        head%=(lenretbuffer-1);
-        retranslatedmessageids[head]=recievepackage->messageid;
+        headretarr++;
+        headretarr%=(lenretbuffer-1);
+        retranslatedmessageids[headretarr]=recievepackage->messageid;
+      }
+      else{
+        delete[] rawrecievedata;
       }
     }
   }
-  delete[] rawrecievedata;
-};
+}
+
+void savedata(struct mainrecivepackage){
+
+}
