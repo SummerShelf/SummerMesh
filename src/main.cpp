@@ -18,15 +18,8 @@ bool recievemode = true;
 bool recieving = false;
 bool recieveflag = false;
 const char* menuelements[]={"reciever mode","retranslator mode","transmit"};
-struct mainrecivepackage{//package for recieving data
-  uint8_t kind;
-  uint8_t networkid;
-  uint32_t messageid;
-  uint32_t recieveid;
-  uint8_t hops;
-  char message[];
-};
-struct __attribute__((__packed__)) packagesingle{//package for transmiting data with type: single (no return, no connection)
+uint32_t nodeid = (int)42;
+struct __attribute__((__packed__)) packagesingle{//package for transmiting data with type: single (no return, no connection, only message)
   uint8_t kind;
   uint8_t networkid;
   uint32_t messageid;
@@ -37,7 +30,7 @@ struct __attribute__((__packed__)) packagesingle{//package for transmiting data 
 
 int sendsingle(uint32_t targetid, const char* message, uint8_t sethops, uint32_t setnetwork);
 int recieve();
-void savedata(struct mainrecivepackage rpck);
+void handledatasingle(struct packagesingle* rpck);
 
 void setflag(){
   recieveflag=true;
@@ -79,6 +72,9 @@ void loop() {
     }
     if (page==1 && type==0){
       retranslatormode=!retranslatormode;
+      if (retranslatormode){
+        recievemode=true;// if retranslation mode is turned on, recieve mode is activated too.
+      }
     }
   } 
   else if (readValue > 350 && readValue < 600) {
@@ -149,24 +145,33 @@ int sendsingle(uint32_t targetid, const char* message, uint8_t sethops, uint32_t
 int recieve(){
   recieveflag=false;
   size_t len = radio.getPacketLength();
+  if (!recievemode){
+    return -1;
+  }
+  if (len<11){
+    return -1;//not a SummerMesh packet
+  }
   uint8_t* rawrecievedata= new uint8_t[len];
   radio.readData(rawrecievedata, len);
-  if (*rawrecievedata==(uint8_t)1){
+  if (*rawrecievedata==(uint8_t)1){  
     struct packagesingle* recievepackage = (struct packagesingle*)rawrecievedata;
     rawrecievedata[len-1]='\0'; //adds null terminator
+    handledatasingle(recievepackage);
     if (retranslatormode && recievepackage->hops > 0){
-      if (sendsingle(recievepackage->recieveid,recievepackage->message,(recievepackage->hops)-1, recievepackage->networkid)==0){
-        headretarr++;
-        headretarr%=(lenretbuffer-1);
+      if (sendsingle(recievepackage->recieveid,recievepackage->message,(recievepackage->hops)-1, recievepackage->networkid)==0){ 
+        headretarr++;//"If you need more than 3 levels of indentation, you’re screwed anyway, and should fix your program." - Linus Torvald (will be done later (maybe))
+        headretarr%=lenretbuffer;
         retranslatedmessageids[headretarr]=recievepackage->messageid;
-      }
-      else{
         delete[] rawrecievedata;
-      }
+        return 1;
+      }  
     }
   }
+  Serial.println("Not SummerMesh packet");
+  delete[] rawrecievedata;
+  return -1;//not a SummerMesh packet 
 }
 
-void savedata(struct mainrecivepackage){
+void handledatasingle(struct packagesingle* savedatapackage){
 
 }
