@@ -4,21 +4,28 @@
 #include <string.h>
 
 #define lenretbuffer 10
+#define lenhistorybuffer 10
 
 SX1262 radio = new Module(8, 3, 5, 4);
 U8G2_SH1106_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ 1, /* data=*/ 0, /* reset=*/ U8X8_PIN_NONE);
+
 unsigned char page=0;
 int readValue=0;
-uint32_t retranslatedmessageids[lenretbuffer];
-int headretarr=0;
 unsigned char lastbuttonpress=8;
 unsigned char type=0;
+
+uint32_t retranslatedmessageids[lenretbuffer];
+int headretarr=0;
+
+String histarr[lenhistorybuffer];
+int headhistarr=0;
+
 bool retranslatormode = false;
 bool recievemode = true;
 bool recieving = false;
-bool recieveflag = false;
+volatile bool recieveflag = false;
 const char* menuelements[]={"reciever mode","retranslator mode","transmit"};
-uint32_t nodeid = (int)42;
+const uint32_t nodeid = (uint32_t)42;
 struct __attribute__((__packed__)) packagesingle{//package for transmiting data with type: single (no return, no connection, only message)
   uint8_t kind;
   uint8_t networkid;
@@ -30,7 +37,7 @@ struct __attribute__((__packed__)) packagesingle{//package for transmiting data 
 
 int sendsingle(uint32_t targetid, const char* message, uint8_t sethops, uint32_t setnetwork);
 int recieve();
-void handledatasingle(struct packagesingle* rpck);
+void handledatasingle(const String& message);
 
 void setflag(){
   recieveflag=true;
@@ -46,6 +53,7 @@ void setup() {
 
 void loop() {
   if(recieveflag){
+    recieve();
   }
   if (recievemode && !recieving){
     radio.startReceive();
@@ -121,8 +129,8 @@ void loop() {
 }
 
 int sendsingle(uint32_t targetid, const char* message, uint8_t sethops, uint32_t setnetwork){
-    uint8_t msglen=strlen(message);
-    uint8_t buffer[sizeof(packagesingle)+msglen];//creating buffer with size of struct + message
+    size_t msglen=strlen(message);
+    uint8_t buffer[255];//creating buffer with size of struct + message
     struct packagesingle* pkgs = (struct packagesingle*)buffer;//using same pointer
     pkgs -> kind = (uint8_t)1;
     pkgs -> networkid = setnetwork;
@@ -130,8 +138,8 @@ int sendsingle(uint32_t targetid, const char* message, uint8_t sethops, uint32_t
     pkgs -> recieveid = targetid;
     pkgs -> hops = sethops;
 
-    memcpy(pkgs -> message ,message,msglen);
-    int state = radio.transmit(buffer, sizeof(buffer));
+    memcpy(pkgs -> message ,message, msglen);
+    int state = radio.transmit(buffer, sizeof(packagesingle)+msglen);
     if (state == RADIOLIB_ERR_NONE){
       Serial.println("sended");
       return 0;
@@ -145,33 +153,35 @@ int sendsingle(uint32_t targetid, const char* message, uint8_t sethops, uint32_t
 int recieve(){
   recieveflag=false;
   size_t len = radio.getPacketLength();
-  if (!recievemode){
+  if (!recievemode||len<11){
+    radio.startReceive();//not a SummerMesh packet
     return -1;
   }
-  if (len<11){
-    return -1;//not a SummerMesh packet
-  }
-  uint8_t* rawrecievedata= new uint8_t[len];
+  uint8_t* rawrecievedata= new uint8_t[len+1];
   radio.readData(rawrecievedata, len);
   if (*rawrecievedata==(uint8_t)1){  
     struct packagesingle* recievepackage = (struct packagesingle*)rawrecievedata;
-    rawrecievedata[len-1]='\0'; //adds null terminator
-    handledatasingle(recievepackage);
+    rawrecievedata[len]='\0'; //adds null terminator
+    handledatasingle(String(recievepackage->message));
     if (retranslatormode && recievepackage->hops > 0){
       if (sendsingle(recievepackage->recieveid,recievepackage->message,(recievepackage->hops)-1, recievepackage->networkid)==0){ 
         headretarr++;//"If you need more than 3 levels of indentation, you’re screwed anyway, and should fix your program." - Linus Torvald (will be done later (maybe))
         headretarr%=lenretbuffer;
         retranslatedmessageids[headretarr]=recievepackage->messageid;
         delete[] rawrecievedata;
-        return 1;
-      }  
+        return 10;
+      }
     }
+    delete[] rawrecievedata;
+    return 1;  
   }
   Serial.println("Not SummerMesh packet");
   delete[] rawrecievedata;
   return -1;//not a SummerMesh packet 
 }
 
-void handledatasingle(struct packagesingle* savedatapackage){
-
+void handledatasingle(const String& message){
+  headhistarr++;
+  headhistarr%=lenhistorybuffer;
+  histarr[headhistarr]=message;
 }
